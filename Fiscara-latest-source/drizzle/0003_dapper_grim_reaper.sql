@@ -1,1 +1,0 @@
-ALTER TABLE `budget_items` ADD `kind` text DEFAULT 'expense' NOT NULL;
