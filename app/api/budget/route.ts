@@ -1,17 +1,12 @@
-import { createClient } from "../../../lib/supabase/server";
+import { getRequestContext } from "../../../lib/supabase/request";
 
 export const dynamic = "force-dynamic";
 
 const validMonth = (value: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 
-async function context() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  return { supabase, user };
-}
 
 export async function GET(request: Request) {
-  const { supabase, user } = await context();
+  const { supabase, user } = await getRequestContext(request);
   if (!user) return Response.json({ error: "Authentication required" }, { status: 401 });
   const month = new URL(request.url).searchParams.get("month") ?? "";
   if (!validMonth(month)) return Response.json({ error: "Choose a valid month." }, { status: 400 });
@@ -28,7 +23,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { supabase, user } = await context();
+  const { supabase, user } = await getRequestContext(request);
   if (!user) return Response.json({ error: "Authentication required" }, { status: 401 });
   const body = (await request.json()) as Record<string, unknown>;
   const monthKey = String(body.monthKey ?? "");
@@ -50,7 +45,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const { supabase, user } = await context();
+  const { supabase, user } = await getRequestContext(request);
   if (!user) return Response.json({ error: "Authentication required" }, { status: 401 });
   const body = (await request.json()) as Record<string, unknown>;
   if (body.action === "target") {
@@ -85,7 +80,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const { supabase, user } = await context();
+  const { supabase, user } = await getRequestContext(request);
   if (!user) return Response.json({ error: "Authentication required" }, { status: 401 });
   const id = Number(new URL(request.url).searchParams.get("id"));
   if (!id) return Response.json({ error: "Budget item required." }, { status: 400 });

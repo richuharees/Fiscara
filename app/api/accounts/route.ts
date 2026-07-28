@@ -1,4 +1,4 @@
-import { createClient } from "../../../lib/supabase/server";
+import { getRequestContext } from "../../../lib/supabase/request";
 
 export const dynamic = "force-dynamic";
 
@@ -8,14 +8,9 @@ const defaultAccounts = [
   { name: "Emergency savings", institution: "Manual", type: "savings", color: "#a78bfa" },
 ];
 
-async function context() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  return { supabase, user };
-}
 
-export async function GET() {
-  const { supabase, user } = await context();
+export async function GET(request: Request) {
+  const { supabase, user } = await getRequestContext(request);
   if (!user) return Response.json({ error: "Authentication required" }, { status: 401 });
   let { data, error } = await supabase.from("accounts").select("*").order("created_at");
   if (error) return Response.json({ error: error.message }, { status: 500 });
@@ -29,7 +24,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { supabase, user } = await context();
+  const { supabase, user } = await getRequestContext(request);
   if (!user) return Response.json({ error: "Authentication required" }, { status: 401 });
   const body = (await request.json()) as Record<string, unknown>;
   const name = String(body.name ?? "").trim().slice(0, 60);
@@ -49,7 +44,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const { supabase, user } = await context();
+  const { supabase, user } = await getRequestContext(request);
   if (!user) return Response.json({ error: "Authentication required" }, { status: 401 });
   const body = (await request.json()) as Record<string, unknown>;
   const id = Number(body.id);

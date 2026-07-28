@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Brand from "./Brand";
+import { authenticatedFetch } from "../lib/api-client";
 import {
   ChangeEvent,
   CSSProperties,
@@ -96,12 +97,13 @@ export default function Dashboard({
   const [editingBudget, setEditingBudget] = useState<BudgetItem | null>(null);
   const [budgetKind, setBudgetKind] = useState<"expense" | "income">("expense");
   const [budgetError, setBudgetError] = useState("");
+  const [accountError, setAccountError] = useState("");
 
   useEffect(() => {
     if (demo) return;
     Promise.all([
-      fetch("/api/transactions").then((response) => response.json()),
-      fetch("/api/accounts").then((response) => response.json()),
+      authenticatedFetch("/api/transactions").then((response) => response.json()),
+      authenticatedFetch("/api/accounts").then((response) => response.json()),
     ]).then(([transactionData, accountData]) => {
       setTransactions(transactionData.transactions ?? []);
       setAccounts(accountData.accounts ?? []);
@@ -111,7 +113,7 @@ export default function Dashboard({
 
   useEffect(() => {
     if (demo) return;
-    fetch(`/api/budget?month=${budgetMonth}`).then((response) => response.json()).then((data) => {
+    authenticatedFetch(`/api/budget?month=${budgetMonth}`).then((response) => response.json()).then((data) => {
       setBudgetItems(data.items ?? []);
       setBudgetTarget(data.target ?? 0);
     });
@@ -159,7 +161,7 @@ export default function Dashboard({
     if (!item.name || !item.amount) return;
     if (demo) setTransactions((current) => [...current, { ...item, id: Date.now(), source: "manual" }]);
     else {
-      const response = await fetch("/api/transactions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(item) });
+      const response = await authenticatedFetch("/api/transactions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(item) });
       const data = await response.json();
       if (data.transaction) setTransactions((current) => [...current, data.transaction]);
     }
@@ -168,6 +170,7 @@ export default function Dashboard({
 
   async function addAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setAccountError("");
     const form = new FormData(event.currentTarget);
     const payload = {
       name: String(form.get("name") ?? ""),
@@ -180,9 +183,14 @@ export default function Dashboard({
     if (!payload.name) return;
     if (demo) setAccounts((current) => [...current, { ...payload, id: Date.now(), currency: "EUR", type: payload.type as FinanceAccount["type"] }]);
     else {
-      const response = await fetch("/api/accounts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-      const data = await response.json();
-      if (data.account) setAccounts((current) => [...current, data.account]);
+      const response = await authenticatedFetch("/api/accounts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.account) {
+        setAccountError(data.error ?? "The account could not be added. Please sign in again and retry.");
+        return;
+      }
+      setAccounts((current) => [...current, data.account]);
+      if (!accounts.length) setImportAccount(data.account.id);
     }
     setModal(null);
   }
@@ -194,7 +202,7 @@ export default function Dashboard({
     if (!Number.isFinite(balance)) return;
     if (demo) setAccounts((current) => current.map((account) => account.id === balanceAccount.id ? { ...account, currentBalance: balance } : account));
     else {
-      const response = await fetch("/api/accounts", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: balanceAccount.id, currentBalance: balance }) });
+      const response = await authenticatedFetch("/api/accounts", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: balanceAccount.id, currentBalance: balance }) });
       const data = await response.json();
       if (data.account) setAccounts((current) => current.map((account) => account.id === data.account.id ? data.account : account));
     }
@@ -221,7 +229,7 @@ export default function Dashboard({
         ? current.map((item) => item.id === editingBudget.id ? { ...item, ...payload } as BudgetItem : item)
         : [...current, { ...payload, id: Date.now() } as BudgetItem]);
     } else {
-      const response = await fetch("/api/budget", {
+      const response = await authenticatedFetch("/api/budget", {
         method: editingBudget ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
@@ -240,14 +248,14 @@ export default function Dashboard({
   }
 
   async function deleteBudgetItem(id: number) {
-    if (!demo) await fetch(`/api/budget?id=${id}`, { method: "DELETE" });
+    if (!demo) await authenticatedFetch(`/api/budget?id=${id}`, { method: "DELETE" });
     setBudgetItems((current) => current.filter((item) => item.id !== id));
   }
 
   async function saveBudgetTarget(value: number) {
     const target = Number.isFinite(value) && value >= 0 ? Math.round(value * 100) / 100 : 0;
     setBudgetTarget(target);
-    if (!demo) await fetch("/api/budget", {
+    if (!demo) await authenticatedFetch("/api/budget", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action: "target", monthKey: budgetMonth, monthlyTarget: target }),
@@ -282,7 +290,7 @@ export default function Dashboard({
         setTransactions((current) => [...current, ...selected.map((row, index) => ({ ...row, accountId: importAccount, id: Date.now() + index }))]);
         setImportMessage(`${selected.length} transactions imported. ${importRows.filter((row) => row.duplicate).length} duplicates skipped.`);
       } else {
-      const response = await fetch("/api/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accountId: importAccount, rows: selected }) });
+      const response = await authenticatedFetch("/api/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accountId: importAccount, rows: selected }) });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "The transactions could not be saved. Please try again.");
         setTransactions((current) => [...current, ...(data.transactions ?? [])]);
@@ -336,8 +344,8 @@ export default function Dashboard({
             {active === "Overview" && <Overview totals={totals} accounts={accounts} monthly={monthly} categoryTotals={categoryTotals} transactions={transactions} onNavigate={setActive} />}
             {active === "Budget" && <BudgetView month={budgetMonth} setMonth={setBudgetMonth} items={budgetItems.filter((item) => item.monthKey === budgetMonth)} target={budgetTarget} onTarget={saveBudgetTarget} onAdd={(kind) => { setEditingBudget(null); setBudgetKind(kind); setBudgetError(""); setModal("budget"); }} onEdit={(item) => { setEditingBudget(item); setBudgetKind(item.kind); setBudgetError(""); setModal("budget"); }} onDelete={deleteBudgetItem} />}
             {active === "Transactions" && <TransactionsView transactions={filtered} allTransactions={transactions} accounts={accounts} query={query} setQuery={setQuery} category={category} setCategory={setCategory} accountFilter={accountFilter} setAccountFilter={setAccountFilter} accountName={accountName} onImport={openImport} />}
-            {active === "Accounts" && <AccountsView accounts={accounts} transactions={transactions} onAdd={() => setModal("account")} onBalance={(account) => { setBalanceAccount(account); setModal("balance"); }} />}
-            {active === "Savings" && <SavingsView accounts={accounts} totals={totals} onAdd={() => setModal("account")} onBalance={(account) => { setBalanceAccount(account); setModal("balance"); }} />}
+            {active === "Accounts" && <AccountsView accounts={accounts} transactions={transactions} onAdd={() => { setAccountError(""); setModal("account"); }} onBalance={(account) => { setBalanceAccount(account); setModal("balance"); }} />}
+            {active === "Savings" && <SavingsView accounts={accounts} totals={totals} onAdd={() => { setAccountError(""); setModal("account"); }} onBalance={(account) => { setBalanceAccount(account); setModal("balance"); }} />}
             {active === "Insights" && <InsightsView transactions={transactions} monthly={monthly} recurring={recurring} categoryTotals={categoryTotals} />}
           </>
         )}
@@ -372,6 +380,7 @@ export default function Dashboard({
               <Field label="Last four digits"><input name="lastFour" inputMode="numeric" maxLength={4} placeholder="4821" /></Field>
               <Field label="Accent colour"><input name="color" type="color" defaultValue="#42efb1" /></Field>
             </div>
+            {accountError && <p className="form-error">{accountError}</p>}
             <ModalActions onClose={() => setModal(null)} submit="Add account" />
           </form>
         </ModalShell>

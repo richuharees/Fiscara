@@ -1,4 +1,4 @@
-import { createClient } from "../../../lib/supabase/server";
+import { getRequestContext } from "../../../lib/supabase/request";
 import { createFingerprint } from "../../lib/finance";
 
 export const dynamic = "force-dynamic";
@@ -9,8 +9,7 @@ type IncomingRow = {
 };
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { supabase, user } = await getRequestContext(request);
   if (!user) return Response.json({ error: "Authentication required" }, { status: 401 });
   const body = (await request.json()) as { accountId?: number; rows?: IncomingRow[] };
   const accountId = Number(body.accountId);
