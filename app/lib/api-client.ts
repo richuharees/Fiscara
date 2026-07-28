@@ -45,13 +45,7 @@ async function authenticatedClient() {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) throw new Error(sessionError.message);
 
-  let session = sessionData.session;
-  if (!session) {
-    const { data: refreshed, error } = await supabase.auth.refreshSession();
-    if (error) throw new Error(error.message);
-    session = refreshed.session;
-  }
-
+  const session = sessionData.session;
   if (!session?.user) return { supabase, user: null };
   return { supabase, user: session.user };
 }
